@@ -1,0 +1,138 @@
+name: Continuous Integration
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+  HUSKY: "0"
+
+jobs:
+  frontend:
+    name: Frontend Checks, Tests, and Builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: Frontend
+    env:
+      VITE_API_URL: http://localhost:9999
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run typecheck
+      - run: bun run format:check
+      - run: bun run test:unit
+      - run: bun run build
+      - run: bun run build-storybook
+
+  integration-tests:
+    name: Frontend Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: Frontend
+    env:
+      VITE_API_URL: http://localhost:9999
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - run: bun install --frozen-lockfile
+      - run: bun x playwright install --with-deps chromium
+      - run: bun run test:integration
+      - uses: actions/upload-artifact@v4
+        if: ${{ failure() && !cancelled() }}
+        with:
+          name: playwright-report-integration
+          path: |
+            Frontend/playwright-report/
+            Frontend/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  e2e-tests:
+    name: Frontend E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: Frontend
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - run: bun install --frozen-lockfile
+      - name: Install backend dependencies
+        run: bun install --frozen-lockfile
+        working-directory: Backend
+      - run: bun x playwright install --with-deps chromium
+      - run: bun run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: ${{ failure() && !cancelled() }}
+        with:
+          name: playwright-report-e2e
+          path: |
+            Frontend/playwright-report/
+            Frontend/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  backend:
+    name: Backend Checks, Tests, and Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: Backend
+    env:
+      NODE_ENV: test
+      LOG_LEVEL: silent
+      DATABASE_URL: "file::memory:"
+      CLIENT_URLS: '["http://localhost:5173"]'
+      JWT_SECRET: ci-test-secret
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - run: bun install --frozen-lockfile
+      - run: bun run lint --max-warnings 0
+      - run: bun run typecheck
+      - run: bun run test
+      - run: bun run build

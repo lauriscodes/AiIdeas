@@ -1,0 +1,13 @@
+.react-router
+build
+node_modules
+README.md
+storybook-static
+playwright-report
+test-results
+playwright
+blob-report
+coverage
+*-check.log
+typecheck.log
+.env
